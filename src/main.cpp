@@ -58,13 +58,13 @@ int getServoFeedback(const int pin)
   result = result < 0 ? 0 : result;
   result = result > 180 ? 180 : result;
 
-  return result;
+  return myservo.read(); //result;
 }
 
 
 void callback(char* topic, byte* payload, unsigned int length) 
 {
-  Serial.print("Command from MQTT broker is : ");
+  Serial.print("Command from MQTT broker is : Topic: ");
   Serial.println(topic);
 
   payload[length] = '\0';                           // Make payload a string by NULL terminating it since it is not there
@@ -77,16 +77,16 @@ void callback(char* topic, byte* payload, unsigned int length)
   Serial.print(" to ");
   Serial.println(targetAngle);
   Serial.print("Please wait as we are going slow... ");
-
+  int pos=0;
   myservo.attach(ServoPin);
   int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
   for (int i=startAngle; i!=targetAngle; i = i + direction){
-    myservo.write(i); // tell servo to go to step tovards target angle.
+    myservo.write(i);                         // tell servo to go to step tovards target angle.
     delay(40);
-    int pos = getServoFeedback(analogInPin);
+    pos = getServoFeedback(analogInPin);
 
     // Test if we are lagging to much, if so goto sleep as the servo is likely overloaded 
-    if(abs(pos - i) > 20){
+    if(abs(pos - i) > 40){
       myservo.detach();
       Serial.print("\n..TargetAngle: "); Serial.print(i);
       Serial.print(" servo angle: "); Serial.print(pos);
@@ -98,6 +98,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   }
   myservo.detach();
   Serial.println("..Rotation Complete.\n");
+  client.publish(topic, String(pos).c_str(), true);
 
 }//end callback
 
@@ -115,7 +116,7 @@ void reconnect() {
     {
       Serial.println("connected");
      //once connected to MQTT broker, subscribe command if any
-      client.subscribe("WindowServo");
+      client.subscribe("WindowServo2");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
