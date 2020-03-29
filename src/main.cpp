@@ -8,6 +8,7 @@
 #include <PubSubClient.h>
 #include <Servo.h>
 #include "secrets.h"
+#include <math.h>
 
 /* 
  * - Content of secrets.h:
@@ -45,6 +46,19 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+int servoAngle(int lenP){ // Le = L extension
+  //Serial.print("\nlenP: "); Serial.println(lenP);
+
+  double Le = 0, Lr = 55, Rc = 46.0, angle; //Lr = Lrod, Rc = Rcrank
+  Le = (Lr - Rc) + (lenP/100.0) * 2 * Rc;
+
+  //Le = Lr + (lenP / 100.0) * 2 * Rc;
+  //Serial.print("\nLe: "); Serial.println(Le);
+  angle = acos(Rc/(2 * Le) + Le /(2 * Rc) - Lr * Lr / (2 * Le * Rc));
+  //Serial.print("angle: "); Serial.println(angle);
+  return (int) round(angle * 180.0 / PI);
+}
+
 int getServoFeedback(const int pin)
 {
   double sum = 0;
@@ -69,6 +83,7 @@ void callback(char* topic, byte* payload, unsigned int length)
 
   payload[length] = '\0';                           // Make payload a string by NULL terminating it since it is not there
   int targetAngle = atoi((char *)payload);          // convert the string to an int value
+  targetAngle = servoAngle(targetAngle);
   int startAngle = getServoFeedback(analogInPin);   // Read the actual physical position from the servo feedback signal rather than: myservo.read();
   
   // tell what we are doing
@@ -76,7 +91,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   Serial.print(startAngle);
   Serial.print(" to ");
   Serial.println(targetAngle);
-  Serial.print("Please wait as we are going slow... ");
+  Serial.print("Please wait we are going slow... ");
   int pos=0;
   myservo.attach(ServoPin);
   int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
@@ -94,11 +109,13 @@ void callback(char* topic, byte* payload, unsigned int length)
       // ESP.restart();
       ESP.deepSleep(0); // sleep until reset
       return;
-    }    
+    } 
   }
   myservo.detach();
   Serial.println("..Rotation Complete.\n");
-  client.publish(topic, String(pos).c_str(), true);
+  client.publish("servo/pos/read", String(pos).c_str(), true);
+  //Serial.print("\nangle from ratio: ");
+  //Serial.println(String(servoAngle(targetAngle)).c_str());
 
 }//end callback
 
@@ -116,7 +133,7 @@ void reconnect() {
     {
       Serial.println("connected");
      //once connected to MQTT broker, subscribe command if any
-      client.subscribe("WindowServo2");
+      client.subscribe("servo/pos/set");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
