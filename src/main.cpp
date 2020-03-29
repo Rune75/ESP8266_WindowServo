@@ -72,7 +72,7 @@ int getServoFeedback(const int pin)
   result = result < 0 ? 0 : result;
   result = result > 180 ? 180 : result;
 
-  return myservo.read(); //result;
+  return result;
 }
 
 
@@ -92,7 +92,8 @@ void callback(char* topic, byte* payload, unsigned int length)
   Serial.print(" to ");
   Serial.println(targetAngle);
   Serial.print("Please wait we are going slow... ");
-  int pos=0;
+  int pos = getServoFeedback(analogInPin);
+  
   myservo.attach(ServoPin);
   int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
   for (int i=startAngle; i!=targetAngle; i = i + direction){
@@ -101,7 +102,7 @@ void callback(char* topic, byte* payload, unsigned int length)
     pos = getServoFeedback(analogInPin);
 
     // Test if we are lagging to much, if so goto sleep as the servo is likely overloaded 
-    if(abs(pos - i) > 40){
+    if(abs(pos - i) > 60){
       myservo.detach();
       Serial.print("\n..TargetAngle: "); Serial.print(i);
       Serial.print(" servo angle: "); Serial.print(pos);
@@ -114,7 +115,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   myservo.detach();
   Serial.println("..Rotation Complete.\n");
   client.publish("servo/pos/read", String(pos).c_str(), true);
-  //Serial.print("\nangle from ratio: ");
+  Serial.print(" servo angle: "); Serial.print(pos);
   //Serial.println(String(servoAngle(targetAngle)).c_str());
 
 }//end callback
