@@ -83,7 +83,11 @@ void callback(char* topic, byte* payload, unsigned int length)
 
   payload[length] = '\0';                           // Make payload a string by NULL terminating it since it is not there
   int targetAngle = atoi((char *)payload);          // convert the string to an int value
+  Serial.print("String from MQTT client: ");
+  Serial.println(targetAngle);
   targetAngle = servoAngle(targetAngle);
+  Serial.print("MQTT client string converted to target servo angle: ");
+  Serial.println(targetAngle);
   int startAngle = getServoFeedback(analogInPin);   // Read the actual physical position from the servo feedback signal rather than: myservo.read();
   
   // tell what we are doing
@@ -115,7 +119,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   myservo.detach();
   Serial.println("..Rotation Complete.\n");
   client.publish("servo/pos/read", String(pos).c_str(), true);
-  Serial.print(" servo angle: "); Serial.print(pos);
+  Serial.print(" servo angle: "); Serial.println(pos);
   //Serial.println(String(servoAngle(targetAngle)).c_str());
 
 }//end callback
