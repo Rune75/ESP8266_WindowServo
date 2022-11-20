@@ -8,5 +8,7 @@ lib/*
 test/*
 examples
 example*
+._WindowServo.code-workspace
+._platformio.ini
 
 

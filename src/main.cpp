@@ -25,6 +25,8 @@ const int analogInPin = A0;                   // ESP8266 Analog Pin ADC0 = A0 us
 
 Servo myservo;  // create servo object to control a servo
 const int ServoPin = D2;
+static int ServoRangeMin = 69;
+static int ServoRangeMax = 1000;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -59,7 +61,7 @@ int servoAngle(int lenP){ // Le = L extension
   return (int) round(angle * 180.0 / PI);
 }
 
-int getServoFeedback(const int pin)
+double avgAnalogRead(int pin)
 {
   double sum = 0;
   int i=0;  
@@ -68,17 +70,82 @@ int getServoFeedback(const int pin)
   }
   --i; //- Getting the corect number of iterations
   
-  int result = (int) (((sum / i) - 123) * 178/783 + 1 + 0.5) ; //Calcuate average. calibrate offset and scaling to degrees
-  result = result < 0 ? 0 : result;
-  result = result > 180 ? 180 : result;
+  return (sum / i);
+}
+
+int getServoFeedback(const int pin)
+{
+  int result = (int) ((avgAnalogRead(pin) - ServoRangeMin) * 180/(ServoRangeMax - ServoRangeMin) + 0.5) ; //Get servo sense level. calibrate offset and scal to degrees
+
+  //result = result < 0 ? 0 : result;
+  //result = result > 180 ? 180 : result;
 
   return result;
 }
 
 
+void rotateServo(int targetAngle)
+{
+    int startAngle = getServoFeedback(analogInPin);   // Read the actual physical position from the servo feedback signal rather than: myservo.read();
+    
+  if (startAngle !=  targetAngle)
+  { 
+      // tell what we are doing
+      Serial.print("Mowing from current angle ");
+      Serial.print(startAngle);
+      Serial.print(" to ");
+      Serial.println(targetAngle);
+      Serial.print("Please wait we are going slow... ");
+      int pos = getServoFeedback(analogInPin);
+      startAngle = pos;
+    
+      myservo.attach(ServoPin,500,2500);
+      int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
+      for (int i=startAngle; i!=targetAngle; i = i + direction){
+        myservo.write(i);                         // tell servo to go to step tovards target angle.
+        delay(40);
+        pos = getServoFeedback(analogInPin);
+
+        // Test if we are lagging to much, if so goto sleep as the servo is likely overloaded 
+        if(abs(pos - i) > 60){
+          myservo.detach();
+          Serial.print("\n..TargetAngle: "); Serial.print(i);
+          Serial.print(" servo angle: "); Serial.print(pos);
+          Serial.println(" The lag is to high, Going to sleep until reset.. \n");
+          // ESP.restart();
+          //ESP.deepSleep(0); // sleep until reset
+          return;
+        } 
+      }
+      myservo.detach();
+      Serial.print("..Rotation Complete. ");
+      client.publish("servo/pos/read", String(pos).c_str(), true);
+      Serial.print("Feedback angle: "); Serial.println(pos);
+  } else {
+    Serial.println("Rotate servo: Start stop angle equal, nothing to do!\n");
+  }  
+    //Serial.println(String(servoAngle(targetAngle)).c_str());
+}
+
+void calibrateServo()
+{
+  Serial.println("\nCalibrating servo\n-------------");
+  rotateServo(0);
+  delay(500);
+  ServoRangeMin = avgAnalogRead(analogInPin);
+  Serial.print("servoFeedback 0 degree: "); Serial.println(ServoRangeMin);
+  
+  rotateServo(180);
+  delay(500);
+  ServoRangeMax = avgAnalogRead(analogInPin);
+  Serial.print("servoFeedback 180 degree: "); Serial.println(ServoRangeMax);
+  Serial.println("Calibration done!\n-------------\n");
+}
+
+
 void callback(char* topic, byte* payload, unsigned int length) 
 {
-  Serial.print("Command from MQTT broker is : Topic: ");
+  Serial.print("\nCommand from MQTT broker is : Topic: ");
   Serial.println(topic);
 
   payload[length] = '\0';                           // Make payload a string by NULL terminating it since it is not there
@@ -88,39 +155,8 @@ void callback(char* topic, byte* payload, unsigned int length)
   targetAngle = servoAngle(targetAngle);
   Serial.print("MQTT client string converted to target servo angle: ");
   Serial.println(targetAngle);
-  int startAngle = getServoFeedback(analogInPin);   // Read the actual physical position from the servo feedback signal rather than: myservo.read();
   
-  // tell what we are doing
-  Serial.print("Mowing from current angle ");
-  Serial.print(startAngle);
-  Serial.print(" to ");
-  Serial.println(targetAngle);
-  Serial.print("Please wait we are going slow... ");
-  int pos = getServoFeedback(analogInPin);
-  
-  myservo.attach(ServoPin);
-  int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
-  for (int i=startAngle; i!=targetAngle; i = i + direction){
-    myservo.write(i);                         // tell servo to go to step tovards target angle.
-    delay(40);
-    pos = getServoFeedback(analogInPin);
-
-    // Test if we are lagging to much, if so goto sleep as the servo is likely overloaded 
-    if(abs(pos - i) > 60){
-      myservo.detach();
-      Serial.print("\n..TargetAngle: "); Serial.print(i);
-      Serial.print(" servo angle: "); Serial.print(pos);
-      Serial.println(" The lag is to high, Going to sleep until reset.. \n");
-      // ESP.restart();
-      ESP.deepSleep(0); // sleep until reset
-      return;
-    } 
-  }
-  myservo.detach();
-  Serial.println("..Rotation Complete.\n");
-  client.publish("servo/pos/read", String(pos).c_str(), true);
-  Serial.print(" servo angle: "); Serial.println(pos);
-  //Serial.println(String(servoAngle(targetAngle)).c_str());
+  rotateServo(targetAngle);
 
 }//end callback
 
@@ -150,17 +186,15 @@ void reconnect() {
 } //end reconnect()
 
 void setup() {
-  myservo.write(getServoFeedback(analogInPin));
-  myservo.attach(ServoPin);  // attaches the servo on pin D1 to the servo object
-  Serial.begin(115200);
   
+  Serial.begin(19200);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
-  myservo.detach();               // Detach to keep us silent while not changing position
-
+  client.setCallback(callback);  
+  
   pinMode(LED_BUILTIN, OUTPUT);             // Turn off anoyng ESP12F blue LED
   digitalWrite(LED_BUILTIN, HIGH);          // BUILTIN_LED same as D4 gpio2
+  calibrateServo();
 }
 
 void loop() {
