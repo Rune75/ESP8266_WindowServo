@@ -1,7 +1,5 @@
 /*
  * Window servo MQTT FW for the ESP-12E / F module
- * 
- * 
  */
 
 #include <ESP8266WiFi.h>
@@ -21,12 +19,13 @@
  * 
  */
 
-const int analogInPin = A0;                   // ESP8266 Analog Pin ADC0 = A0 used for reading servo position line
+const int analogInPin = A0;       // ESP8266 Analog Pin ADC0 = A0 used for reading servo position signal
 
-Servo myservo;  // create servo object to control a servo
+Servo myservo;                    // Create servo object to control a servo
 const int ServoPin = D2;
-static int ServoRangeMin = 69;
-static int ServoRangeMax = 1000;
+static int ServoRangeMin = 69;    // Minimum servo pwm pulsewidth in us
+static int ServoRangeMax = 1000;  // Maxin mimum servo pwm pulsewidth in us 
+
 WiFiClient espClient;
 PubSubClient client(espClient);
 
@@ -48,6 +47,7 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
+// === Calculate servo angle in degrees from linear extension in % ===============0
 int servoAngle(int lenP){ // Le = L extension
   //Serial.print("\nlenP: "); Serial.println(lenP);
 
@@ -79,7 +79,6 @@ int getServoFeedback(const int pin)
 
   //result = result < 0 ? 0 : result;
   //result = result > 180 ? 180 : result;
-
   return result;
 }
 
@@ -102,7 +101,7 @@ void rotateServo(int targetAngle)
       myservo.attach(ServoPin,500,2500);
       int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
       for (int i=startAngle; i!=targetAngle; i = i + direction){
-        myservo.write(i);                         // tell servo to go to step tovards target angle.
+        myservo.write(i);                         // tell servo to go one step tovards target angle.
         delay(40);
         pos = getServoFeedback(analogInPin);
 
@@ -113,7 +112,7 @@ void rotateServo(int targetAngle)
           Serial.print(" servo angle: "); Serial.print(pos);
           Serial.println(" The lag is to high, Going to sleep until reset.. \n");
           // ESP.restart();
-          //ESP.deepSleep(0); // sleep until reset
+          ESP.deepSleep(0); // sleep until reset
           return;
         } 
       }
