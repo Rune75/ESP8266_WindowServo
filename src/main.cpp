@@ -23,8 +23,10 @@ const int analogInPin = A0;       // ESP8266 Analog Pin ADC0 = A0 used for readi
 
 Servo myservo;                    // Create servo object to control a servo
 const int ServoPin = D2;
-static int ServoRangeMin = 69;    // Minimum servo pwm pulsewidth in us
-static int ServoRangeMax = 1000;  // Maxin mimum servo pwm pulsewidth in us 
+static int ServoRangeMin = 842;    // 0 degree servo position adc sensor reading
+static int ServoRangeMax = 246;    // 180 degree servo position adc sensor reading
+//static int pos =0;
+
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -76,16 +78,14 @@ double avgAnalogRead(int pin)
 int getServoFeedback(const int pin)
 {
   int result = (int) ((avgAnalogRead(pin) - ServoRangeMin) * 180/(ServoRangeMax - ServoRangeMin) + 0.5) ; //Get servo sense level. calibrate offset and scal to degrees
-
-  //result = result < 0 ? 0 : result;
-  //result = result > 180 ? 180 : result;
   return result;
 }
 
 
-void rotateServo(int targetAngle)
+void rotateServo(int targetAngle, int testLag)
 {
-    int startAngle = getServoFeedback(analogInPin);   // Read the actual physical position from the servo feedback signal rather than: myservo.read();
+  int pos = getServoFeedback(analogInPin);
+  int startAngle = pos; // getServoFeedback(analogInPin);   // Read the actual physical position from the servo feedback signal rather than: myservo.read();
     
   if (startAngle !=  targetAngle)
   { 
@@ -95,18 +95,17 @@ void rotateServo(int targetAngle)
       Serial.print(" to ");
       Serial.println(targetAngle);
       Serial.print("Please wait we are going slow... ");
-      int pos = getServoFeedback(analogInPin);
-      startAngle = pos;
-    
+
+      myservo.write(startAngle);              // Write before attatch to avoid servo jumping to 90 degrees
       myservo.attach(ServoPin,500,2500);
       int direction = (targetAngle > startAngle) ? 1 : -1;    // Seting moving directiion
       for (int i=startAngle; i!=targetAngle; i = i + direction){
-        myservo.write(i);                         // tell servo to go one step tovards target angle.
+        myservo.write(i);                         // tell servo to go one degree tovards target angle.
         delay(40);
         pos = getServoFeedback(analogInPin);
 
         // Test if we are lagging to much, if so goto sleep as the servo is likely overloaded 
-        if(abs(pos - i) > 60){
+        if( testLag and (abs(pos - i) > 60)){
           myservo.detach();
           Serial.print("\n..TargetAngle: "); Serial.print(i);
           Serial.print(" servo angle: "); Serial.print(pos);
@@ -123,22 +122,22 @@ void rotateServo(int targetAngle)
   } else {
     Serial.println("Rotate servo: Start stop angle equal, nothing to do!\n");
   }  
-    //Serial.println(String(servoAngle(targetAngle)).c_str());
 }
 
 void calibrateServo()
 {
   Serial.println("\nCalibrating servo\n-------------");
-  rotateServo(0);
+  rotateServo(0, 0);
   delay(500);
   ServoRangeMin = avgAnalogRead(analogInPin);
-  Serial.print("servoFeedback 0 degree: "); Serial.println(ServoRangeMin);
+  Serial.print("Servo sensor ADC LSB`s at 0 degree: "); Serial.println(ServoRangeMin);
   
-  rotateServo(180);
+  rotateServo(180, 0);
   delay(500);
   ServoRangeMax = avgAnalogRead(analogInPin);
-  Serial.print("servoFeedback 180 degree: "); Serial.println(ServoRangeMax);
+  Serial.print("Servo sensor ADC LSB`s at 180 degree: "); Serial.println(ServoRangeMax);
   Serial.println("Calibration done!\n-------------\n");
+  // Serial.print("Feedback angle: "); Serial.println(getServoFeedback(analogInPin));
 }
 
 
@@ -155,7 +154,7 @@ void callback(char* topic, byte* payload, unsigned int length)
   Serial.print("MQTT client string converted to target servo angle: ");
   Serial.println(targetAngle);
   
-  rotateServo(targetAngle);
+  rotateServo(targetAngle, 1);
 
 }//end callback
 
@@ -185,8 +184,8 @@ void reconnect() {
 } //end reconnect()
 
 void setup() {
-  
-  Serial.begin(19200);
+  myservo.detach();
+  Serial.begin(9600);
   setup_wifi();
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);  
